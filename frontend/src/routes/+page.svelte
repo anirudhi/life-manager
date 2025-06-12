@@ -41,6 +41,12 @@
 			frequency: record.frequency || 'daily'
 		};
 	}
+	function getCurrentTimePosition() {
+		const now = new Date();
+		const hours = now.getHours();
+		const minutes = now.getMinutes();
+		return Math.floor((hours + minutes / 60) * 120); // 120px per hour
+	}
 
 	let showTaskModal = $state(false);
 	let selectedColumnId = $state('');
@@ -55,18 +61,24 @@
 	function getTasksBySection(section: string) {
 		return tasks.map(convertToTask).filter((task) => task.section === section);
 	}
+	function updateCurrentTime() {
+		currentTime = new Date();
+		// Only update the position if the minute has changed
+		if (tasksContainer) {
+			const newPosition = getCurrentTimePosition();
+			const currentPosition = parseInt(
+				tasksContainer.style.getPropertyValue('--current-time-position') || '0'
+			);
+			if (newPosition !== currentPosition) {
+				tasksContainer.style.setProperty('--current-time-position', newPosition.toString());
+			}
+		}
+	}
 
 	const timeSlots = Array.from({ length: 24 }, (_, i) => {
 		const hour = i.toString().padStart(2, '0');
 		return `${hour}:00`;
 	});
-
-	function getCurrentTimePosition() {
-		const now = new Date();
-		const hours = now.getHours();
-		const minutes = now.getMinutes();
-		return (hours + minutes / 60) * 120; // 120px per hour
-	}
 
 	function scrollToCurrentTime() {
 		if (tasksContainer) {
@@ -85,6 +97,85 @@
 			event.dataTransfer.setData('text/plain', task.id);
 			event.dataTransfer.effectAllowed = 'move';
 		}
+	}
+	function handleDragOver(event: DragEvent, targetColumn: string, timeSlot?: string) {
+		event.preventDefault();
+		if (event.dataTransfer) {
+			event.dataTransfer.dropEffect = 'move';
+		}
+		if (timeSlot) {
+			draggedOverTime = timeSlot;
+			// Add visual feedback for the drop target
+			const target = event.currentTarget as HTMLElement;
+			target.classList.add('bg-blue-50/50');
+		}
+	}
+
+	function handleDragLeave(event: DragEvent) {
+		const target = event.currentTarget as HTMLElement;
+		target.classList.remove('bg-blue-50/50');
+	}
+
+	function handleDrop(event: DragEvent, targetColumn: string, timeSlot?: string) {
+		event.preventDefault();
+		const target = event.currentTarget as HTMLElement;
+		target.classList.remove('bg-blue-50/50');
+
+		if (!draggedTask) return;
+
+		if (targetColumn === 'today' && timeSlot) {
+			const [hours, minutes] = timeSlot.split(':').map(Number);
+			const duration = draggedTask.estimatedTime || 60; // Use task's estimated time or default to 1 hour
+
+			// Calculate new start and end times
+			const newStartTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+			const endTimeDate = new Date(`2000-01-01T${newStartTime}`);
+			endTimeDate.setMinutes(endTimeDate.getMinutes() + duration);
+			const newEndTime = endTimeDate.toTimeString().slice(0, 5);
+
+			// If the task is recurring, create a new instance for today
+			const isRecurring = recurringTasks.some((rt) => rt.id === draggedTask.id.split('-')[0]);
+			if (isRecurring) {
+				const today = new Date().toISOString().split('T')[0];
+				const todayTask = {
+					...draggedTask,
+					id: `${draggedTask.id.split('-')[0]}-${today}`,
+					section: 'today',
+					startTime: newStartTime,
+					endTime: newEndTime,
+					created: new Date().toISOString(),
+					updated: new Date().toISOString()
+				};
+				boardStore.addTask(todayTask);
+			} else {
+				// For non-recurring tasks, first remove from current section
+				const currentSection = draggedTask.section;
+				if (currentSection !== 'today') {
+					boardStore.updateTask(draggedTask.id, {
+						...draggedTask,
+						section: 'today',
+						startTime: newStartTime,
+						endTime: newEndTime
+					});
+				} else {
+					// If already in today, just update the time
+					boardStore.updateTask(draggedTask.id, {
+						startTime: newStartTime,
+						endTime: newEndTime
+					});
+				}
+			}
+		} else {
+			// Moving to "Can do now" - remove time information
+			const { startTime, endTime, ...taskWithoutTime } = draggedTask;
+			boardStore.updateTask(draggedTask.id, {
+				...taskWithoutTime,
+				section: 'can-do-now'
+			});
+		}
+
+		draggedTask = null;
+		draggedOverTime = null;
 	}
 
 	function handleDragOver(event: DragEvent, targetColumn: string, timeSlot?: string) {
@@ -241,6 +332,44 @@
 		scrollToCurrentTime();
 		// Update current time every minute
 		const interval = setInterval(updateCurrentTime, 60000);
+		// Add recurring tasks to Today's view
+		const existingTasks = boardStore.getTasksBySection('today');
+		const today = new Date().toISOString().split('T')[0];
+
+		recurringTasks.forEach((task) => {
+			// Check if the task already exists in Today's view with today's date
+			const existingTask = existingTasks.find(
+				(t) => t.id.startsWith(task.id) && t.id.includes(today)
+			);
+
+			if (!existingTask) {
+				// Find available time slots
+				const availableSlots = findAvailableTimeSlots(existingTasks, task.estimatedTime);
+				if (availableSlots.length > 0) {
+					// Get a random available time slot
+					const startTime = getRandomTimeSlot(availableSlots);
+					const endTime = new Date(
+						new Date(`2000-01-01T${startTime}`).getTime() + task.estimatedTime * 60 * 1000
+					)
+						.toTimeString()
+						.slice(0, 5);
+
+					// Create a new task for today
+					const todayTask = {
+						...task,
+						id: `${task.id}-${today}`, // Unique ID for today's instance
+						section: 'today',
+						startTime,
+						endTime,
+						created: new Date().toISOString(),
+						updated: new Date().toISOString()
+					};
+
+					// Add the task to today's view
+					boardStore.addTask(todayTask);
+				}
+			}
+		});
 
 		// Get recurring tasks from the live data
 		recurringTasks = tasks

@@ -341,18 +341,26 @@ export class BoardStore {
       updated: new Date().toISOString()
     };
     
-    this.data.tasks.push(newTask);
+    // Add to the end of the array to maintain order
+    this.data.tasks = [...this.data.tasks, newTask];
     return newTask;
   }
 
   updateTask(taskId: string, updates: Partial<Task>): void {
     const taskIndex = this.data.tasks.findIndex(task => task.id === taskId);
     if (taskIndex !== -1) {
-      this.data.tasks[taskIndex] = {
-        ...this.data.tasks[taskIndex],
-        ...updates,
-        updated: new Date().toISOString()
-      };
+      // Create a new array to maintain reactivity and order
+      const updatedTasks = this.data.tasks.map((task, index) => {
+        if (index === taskIndex) {
+          return {
+            ...task,
+            ...updates,
+            updated: new Date().toISOString()
+          };
+        }
+        return task;
+      });
+      this.data.tasks = updatedTasks;
     }
   }
 
