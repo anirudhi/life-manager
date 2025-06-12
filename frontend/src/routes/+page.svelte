@@ -24,7 +24,7 @@
     const now = new Date();
     const hours = now.getHours();
     const minutes = now.getMinutes();
-    return (hours + minutes / 60) * 120; // 120px per hour
+    return Math.floor((hours + minutes / 60) * 120); // 120px per hour
   }
 
   function scrollToCurrentTime() {
@@ -36,6 +36,14 @@
 
   function updateCurrentTime() {
     currentTime = new Date();
+    // Only update the position if the minute has changed
+    if (tasksContainer) {
+      const newPosition = getCurrentTimePosition();
+      const currentPosition = parseInt(tasksContainer.style.getPropertyValue('--current-time-position') || '0');
+      if (newPosition !== currentPosition) {
+        tasksContainer.style.setProperty('--current-time-position', newPosition.toString());
+      }
+    }
   }
 
   function handleDragStart(event: DragEvent, task: Task) {
@@ -53,36 +61,75 @@
     }
     if (timeSlot) {
       draggedOverTime = timeSlot;
+      // Add visual feedback for the drop target
+      const target = event.currentTarget as HTMLElement;
+      target.classList.add('bg-blue-50/50');
     }
+  }
+
+  function handleDragLeave(event: DragEvent) {
+    const target = event.currentTarget as HTMLElement;
+    target.classList.remove('bg-blue-50/50');
   }
 
   function handleDrop(event: DragEvent, targetColumn: string, timeSlot?: string) {
     event.preventDefault();
-    if (draggedTask) {
-      if (targetColumn === 'today' && timeSlot) {
-        const [hours, minutes] = timeSlot.split(':').map(Number);
-        const duration = 1; // Default 1 hour duration for tasks moved to today
+    const target = event.currentTarget as HTMLElement;
+    target.classList.remove('bg-blue-50/50');
+    
+    if (!draggedTask) return;
 
-        const newStartTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-        const newEndTime = new Date(new Date(`2000-01-01T${newStartTime}`).getTime() + duration * 60 * 60 * 1000)
-          .toTimeString()
-          .slice(0, 5);
+    if (targetColumn === 'today' && timeSlot) {
+      const [hours, minutes] = timeSlot.split(':').map(Number);
+      const duration = draggedTask.estimatedTime || 60; // Use task's estimated time or default to 1 hour
 
-        boardStore.updateTask(draggedTask.id, {
+      // Calculate new start and end times
+      const newStartTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+      const endTimeDate = new Date(`2000-01-01T${newStartTime}`);
+      endTimeDate.setMinutes(endTimeDate.getMinutes() + duration);
+      const newEndTime = endTimeDate.toTimeString().slice(0, 5);
+
+      // If the task is recurring, create a new instance for today
+      const isRecurring = recurringTasks.some(rt => rt.id === draggedTask.id.split('-')[0]);
+      if (isRecurring) {
+        const today = new Date().toISOString().split('T')[0];
+        const todayTask = {
           ...draggedTask,
+          id: `${draggedTask.id.split('-')[0]}-${today}`,
           section: 'today',
           startTime: newStartTime,
-          endTime: newEndTime
-        });
+          endTime: newEndTime,
+          created: new Date().toISOString(),
+          updated: new Date().toISOString()
+        };
+        boardStore.addTask(todayTask);
       } else {
-        // Moving to "Can do now" - remove time information
-        const { startTime, endTime, ...taskWithoutTime } = draggedTask;
-        boardStore.updateTask(draggedTask.id, {
-          ...taskWithoutTime,
-          section: 'can-do-now'
-        });
+        // For non-recurring tasks, first remove from current section
+        const currentSection = draggedTask.section;
+        if (currentSection !== 'today') {
+          boardStore.updateTask(draggedTask.id, {
+            ...draggedTask,
+            section: 'today',
+            startTime: newStartTime,
+            endTime: newEndTime
+          });
+        } else {
+          // If already in today, just update the time
+          boardStore.updateTask(draggedTask.id, {
+            startTime: newStartTime,
+            endTime: newEndTime
+          });
+        }
       }
+    } else {
+      // Moving to "Can do now" - remove time information
+      const { startTime, endTime, ...taskWithoutTime } = draggedTask;
+      boardStore.updateTask(draggedTask.id, {
+        ...taskWithoutTime,
+        section: 'can-do-now'
+      });
     }
+    
     draggedTask = null;
     draggedOverTime = null;
   }
@@ -148,16 +195,14 @@
     {
       id: "recur-2",
       title: "Evening Journal",
-      description: "Reflect on the day and plan tomorrow",
-      section: "recurring",
-      priority: "medium" as const,
+      outcome: "Reflect on the day and plan tomorrow",
+      intensity: 2,
       tags: ["personal", "planning"],
       dueDate: null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
       estimatedTime: 20,
-      context: "@home",
-      energy: "low" as const,
+      created: new Date().toISOString(),
+      updated: new Date().toISOString(),
+      section: "recurring",
       streak: 3,
       lastCompleted: new Date().toISOString(),
       frequency: "daily"
@@ -165,16 +210,14 @@
     {
       id: "recur-3",
       title: "Exercise",
-      description: "30 minutes workout",
-      section: "recurring",
-      priority: "high" as const,
+      outcome: "30 minutes workout",
+      intensity: 8,
       tags: ["health", "fitness"],
       dueDate: null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
       estimatedTime: 30,
-      context: "@home",
-      energy: "high" as const,
+      created: new Date().toISOString(),
+      updated: new Date().toISOString(),
+      section: "recurring",
       streak: 5,
       lastCompleted: new Date().toISOString(),
       frequency: "daily"
@@ -242,103 +285,16 @@
     // Update current time every minute
     const interval = setInterval(updateCurrentTime, 60000);
 
-    // Add sample tasks to "Can do now"
-    const sampleTasks = [
-      {
-        id: "task-1",
-        title: "Review and respond to emails",
-        outcome: "Clear inbox and respond to urgent messages",
-        intensity: 3,
-        tags: ["work", "communication"],
-        dueDate: new Date().toISOString(),
-        estimatedTime: 30,
-        created: new Date().toISOString(),
-        updated: new Date().toISOString(),
-        section: "can-do-now"
-      },
-      {
-        id: "task-2",
-        title: "Update project documentation",
-        outcome: "Document latest API changes and update user guides",
-        intensity: 2,
-        tags: ["work", "documentation"],
-        dueDate: new Date().toISOString(),
-        estimatedTime: 45,
-        created: new Date().toISOString(),
-        updated: new Date().toISOString(),
-        section: "can-do-now"
-      }
-    ];
-
-    // Only add tasks if the column is empty
-    if (boardStore.getTasksBySection('can-do-now').length === 0) {
-      sampleTasks.forEach(task => boardStore.addTask(task));
-    }
-
-    // Add sample waiting tasks
-    const waitingTasks = [
-      {
-        id: "wait-1",
-        title: "Client Feedback on Proposal",
-        outcome: "Get client's approval on project proposal",
-        intensity: 3,
-        tags: ["client", "feedback"],
-        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        estimatedTime: 0,
-        created: new Date().toISOString(),
-        updated: new Date().toISOString(),
-        section: "waiting"
-      }
-    ];
-
-    // Add sample someday tasks
-    const somedayTasks = [
-      {
-        id: "someday-1",
-        title: "Learn Rust Programming",
-        outcome: "Complete Rust fundamentals course and build a small project",
-        intensity: 2,
-        tags: ["learning", "programming"],
-        dueDate: null,
-        estimatedTime: 0,
-        created: new Date().toISOString(),
-        updated: new Date().toISOString(),
-        section: "someday"
-      }
-    ];
-
-    // Add sample reference tasks
-    const referenceTasks = [
-      {
-        id: "ref-1",
-        title: "Project Architecture Notes",
-        outcome: "Maintain up-to-date documentation of system architecture",
-        intensity: 1,
-        tags: ["documentation", "architecture"],
-        dueDate: null,
-        estimatedTime: 0,
-        created: new Date().toISOString(),
-        updated: new Date().toISOString(),
-        section: "reference"
-      }
-    ];
-
-    // Add tasks if columns are empty
-    if (boardStore.getTasksBySection('waiting').length === 0) {
-      waitingTasks.forEach(task => boardStore.addTask(task));
-    }
-    if (boardStore.getTasksBySection('someday').length === 0) {
-      somedayTasks.forEach(task => boardStore.addTask(task));
-    }
-    if (boardStore.getTasksBySection('reference').length === 0) {
-      referenceTasks.forEach(task => boardStore.addTask(task));
-    }
-
     // Add recurring tasks to Today's view
     const existingTasks = boardStore.getTasksBySection('today');
+    const today = new Date().toISOString().split('T')[0];
+    
     recurringTasks.forEach(task => {
-      // Check if the task already exists in Today's view by comparing IDs
-      const existingTask = existingTasks.find(t => t.id === task.id);
+      // Check if the task already exists in Today's view with today's date
+      const existingTask = existingTasks.find(t => 
+        t.id.startsWith(task.id) && t.id.includes(today)
+      );
+      
       if (!existingTask) {
         // Find available time slots
         const availableSlots = findAvailableTimeSlots(existingTasks, task.estimatedTime);
@@ -349,16 +305,19 @@
             .toTimeString()
             .slice(0, 5);
 
-          // Add to Today with the found time slot, preserving the original task ID
+          // Create a new task for today
           const todayTask = {
             ...task,
+            id: `${task.id}-${today}`, // Unique ID for today's instance
             section: 'today',
             startTime,
-            endTime
+            endTime,
+            created: new Date().toISOString(),
+            updated: new Date().toISOString()
           };
           
-          // Use updateTask instead of addTask to preserve the ID
-          boardStore.updateTask(task.id, todayTask);
+          // Add the task to today's view
+          boardStore.addTask(todayTask);
         }
       }
     });
@@ -377,15 +336,22 @@
 <svelte:head>
   <title>GTD Life Manager</title>
   <meta name="description" content="Getting Things Done with style" />
+  <style>
+    :global(body) {
+      background-color: black;
+      margin: 0;
+      padding: 0;
+    }
+  </style>
 </svelte:head>
 
 {#if activeTask}
-  <div class="fixed inset-0 bg-white z-50 flex flex-col">
-    <div class="p-4 border-b border-gray-100 flex items-center justify-between">
-      <h1 class="text-xl font-semibold text-gray-900">Zen Mode</h1>
+  <div class="fixed inset-0 bg-gray-900 z-50 flex flex-col">
+    <div class="p-4 border-b border-gray-700 flex items-center justify-between">
+      <h1 class="text-xl font-semibold text-white">Zen Mode</h1>
       <button
         onclick={exitZenMode}
-        class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-400 hover:text-gray-600 flex items-center justify-center transition-colors duration-200"
+        class="w-8 h-8 rounded-full bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white flex items-center justify-center transition-colors duration-200"
       >
         ✕
       </button>
@@ -393,40 +359,42 @@
 
     <div class="flex-1 p-8 overflow-y-auto">
       <div class="max-w-3xl mx-auto">
-        <h2 class="text-3xl font-bold text-gray-900 mb-4">{activeTask.title}</h2>
+        <h2 class="text-3xl font-bold text-white mb-4">{activeTask.title}</h2>
         
-        {#if activeTask.description}
-          <p class="text-gray-600 mb-6">{activeTask.description}</p>
+        {#if activeTask.outcome}
+          <p class="text-gray-300 mb-6">{activeTask.outcome}</p>
         {/if}
 
         <div class="grid grid-cols-2 gap-6">
-          <div class="bg-gray-50 rounded-lg p-4">
-            <h3 class="text-sm font-medium text-gray-500 mb-2">Context</h3>
-            <p class="text-gray-900">{activeTask.context}</p>
-          </div>
-
-          <div class="bg-gray-50 rounded-lg p-4">
-            <h3 class="text-sm font-medium text-gray-500 mb-2">Priority</h3>
-            <p class="text-gray-900 capitalize">{activeTask.priority}</p>
+          <div class="bg-gray-800 rounded-lg p-4">
+            <h3 class="text-sm font-medium text-gray-400 mb-2">Intensity</h3>
+            <p class="text-white">{activeTask.intensity}/10</p>
           </div>
 
           {#if activeTask.estimatedTime}
-            <div class="bg-gray-50 rounded-lg p-4">
-              <h3 class="text-sm font-medium text-gray-500 mb-2">Estimated Time</h3>
-              <p class="text-gray-900">{activeTask.estimatedTime} minutes</p>
+            <div class="bg-gray-800 rounded-lg p-4">
+              <h3 class="text-sm font-medium text-gray-400 mb-2">Estimated Time</h3>
+              <p class="text-white">{activeTask.estimatedTime} minutes</p>
             </div>
           {/if}
 
           {#if activeTask.tags?.length}
-            <div class="bg-gray-50 rounded-lg p-4">
-              <h3 class="text-sm font-medium text-gray-500 mb-2">Tags</h3>
+            <div class="bg-gray-800 rounded-lg p-4">
+              <h3 class="text-sm font-medium text-gray-400 mb-2">Tags</h3>
               <div class="flex flex-wrap gap-2">
                 {#each activeTask.tags as tag}
-                  <span class="px-2 py-1 bg-gray-200 text-gray-700 rounded-full text-sm">
+                  <span class="px-2 py-1 bg-gray-700 text-gray-200 rounded-full text-sm">
                     {tag}
                   </span>
                 {/each}
               </div>
+            </div>
+          {/if}
+
+          {#if activeTask.waitingFor}
+            <div class="bg-gray-800 rounded-lg p-4">
+              <h3 class="text-sm font-medium text-gray-400 mb-2">Waiting For</h3>
+              <p class="text-white">{activeTask.waitingFor}</p>
             </div>
           {/if}
         </div>
@@ -434,13 +402,13 @@
     </div>
   </div>
 {:else}
-  <div class="h-[100vh] grid grid-rows-[auto_1fr] gap-4 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 overflow-hidden">
+  <div class="h-[100vh] grid grid-rows-[auto_1fr] gap-4 p-4 bg-gradient-to-br from-gray-900 to-gray-800 overflow-hidden">
     <!-- Row 1 -->
     <div class="grid grid-cols-[1fr_4fr] gap-4">
-      <div class="bg-white rounded-lg shadow p-4 flex items-center justify-center text-xl font-bold">
+      <div class="bg-gray-800 rounded-lg shadow-lg p-4 flex items-center justify-center text-xl font-bold text-white border border-gray-700">
         🧠 Life Manager
       </div>
-      <div class="bg-white rounded-lg shadow p-4 flex items-center justify-center text-xl font-bold">
+      <div class="bg-gray-800 rounded-lg shadow-lg p-4 flex items-center justify-center text-xl font-bold text-white border border-gray-700">
         📥 Inbox
       </div>
     </div>
@@ -450,17 +418,10 @@
       <!-- Left Column: Can do now + Recurring Tasks -->
       <div class="flex flex-col gap-4 min-h-0">
         <!-- Can do now -->
-        <div class="bg-white rounded-lg shadow flex flex-col h-[calc(50%-0.5rem)] overflow-hidden">
-          <div class="p-4 border-b border-white/50 bg-gradient-to-r from-white/50 to-white/30 shrink-0">
+        <div class="bg-gray-800 rounded-lg shadow-lg flex flex-col h-[calc(50%-0.5rem)] overflow-hidden border border-gray-700">
+          <div class="p-4 border-b border-gray-700 bg-gradient-to-r from-gray-800 to-gray-700 shrink-0">
             <div class="flex items-center justify-between mb-2">
-              <h2 class="font-semibold text-gray-900 text-lg">Can do now</h2>
-              <button
-                onclick={() => openTaskModal('can-do-now')}
-                class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-400 hover:text-gray-600 text-xl flex items-center justify-center transition-colors duration-200"
-                title="Add task"
-              >
-                +
-              </button>
+              <h2 class="font-semibold text-white text-lg">Can do now</h2>
             </div>
           </div>
 
@@ -475,44 +436,59 @@
                 draggable="true"
                 ondragstart={(e) => handleDragStart(e, task)}
                 onclick={() => handleTaskClick(task)}
-                class="backdrop-blur-sm bg-white/60 rounded-lg shadow-[inset_0_2px_4px_rgba(255,255,255,0.5)] border border-white/50 hover:shadow-[inset_0_2px_4px_rgba(255,255,255,0.7)] transition-all duration-200 cursor-pointer hover:scale-[1.02] hover:border-white/70"
+                class="backdrop-blur-sm bg-gray-700/60 rounded-lg shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)] border border-gray-600/50 hover:shadow-[inset_0_2px_4px_rgba(0,0,0,0.3)] transition-all duration-200 cursor-pointer hover:scale-[1.02] hover:border-gray-500/70 {recurringTasks.some(rt => rt.id === task.id) ? 'bg-yellow-900/30' : 'bg-gray-700/60'}"
               >
                 <div class="p-3">
                   <div class="flex items-start justify-between mb-1">
-                    <h3 class="font-medium text-gray-900 text-sm leading-tight flex-1 mr-2 flex items-center gap-2">
+                    <h3 class="font-medium text-white text-sm leading-tight flex-1 mr-2 flex items-center gap-2">
                       {#if task.started}
                         <span class="w-2 h-2 rounded-full bg-green-500"></span>
                       {/if}
                       {task.title}
                     </h3>
-                    <span class={`text-xs px-2 py-1 rounded-full font-medium whitespace-nowrap backdrop-blur-sm ${
-                      task.priority === "high"
-                        ? "bg-red-100/70 text-red-800 border border-red-200/50"
-                        : task.priority === "medium"
-                          ? "bg-yellow-100/70 text-yellow-800 border border-yellow-200/50"
-                          : "bg-green-100/70 text-green-800 border border-green-200/50"
+                    <span class={`text-xs px-2 py-1 rounded-full font-medium whitespace-nowrap ${
+                      task.intensity >= 8
+                        ? "bg-red-900/70 text-red-200 border border-red-800/50"
+                        : task.intensity >= 5
+                          ? "bg-yellow-900/70 text-yellow-200 border border-yellow-800/50"
+                          : "bg-green-900/70 text-green-200 border border-green-800/50"
                     }`}>
-                      {task.priority}
+                      Intensity: {task.intensity}
                     </span>
                   </div>
 
-                  <div class="flex items-center justify-between text-xs text-gray-500">
-                    <span class="bg-white/50 backdrop-blur-sm px-2 py-1 rounded-md font-mono">
-                      {task.context}
-                    </span>
+                  {#if task.outcome}
+                    <p class="text-xs text-gray-300 mb-2 line-clamp-2">
+                      {task.outcome}
+                    </p>
+                  {/if}
+
+                  <div class="flex items-center justify-between text-xs text-gray-400">
+                    <div class="flex flex-wrap gap-1">
+                      {#each task.tags as tag}
+                        <span class="bg-gray-600/50 backdrop-blur-sm px-2 py-1 rounded-md font-mono text-gray-200">
+                          {tag}
+                        </span>
+                      {/each}
+                    </div>
+                    {#if task.estimatedTime}
+                      <span class="text-gray-400">
+                        {task.estimatedTime} min
+                      </span>
+                    {/if}
                   </div>
                 </div>
               </div>
             {/each}
 
             {#if boardStore.getTasksBySection('can-do-now').length === 0}
-              <div class="flex items-center justify-center text-gray-400 h-full">
+              <div class="flex items-center justify-center text-gray-500 h-full">
                 <div class="text-center">
                   <div class="text-2xl mb-2">✨</div>
                   <p class="text-sm">No tasks in can do now</p>
                   <button
                     onclick={() => openTaskModal('can-do-now')}
-                    class="text-xs text-blue-600 hover:text-blue-800 mt-1"
+                    class="text-xs text-blue-400 hover:text-blue-300 mt-1"
                   >
                     Add your first task
                   </button>
@@ -523,10 +499,10 @@
         </div>
 
         <!-- Recurring Tasks -->
-        <div class="bg-white rounded-lg shadow flex flex-col h-[calc(50%-0.5rem)] overflow-hidden">
-          <div class="p-4 border-b border-white/50 bg-gradient-to-r from-white/50 to-white/30 shrink-0">
+        <div class="bg-gray-800 rounded-lg shadow-lg flex flex-col h-[calc(50%-0.5rem)] overflow-hidden border border-gray-700">
+          <div class="p-4 border-b border-gray-700 bg-gradient-to-r from-gray-800 to-gray-700 shrink-0">
             <div class="flex items-center justify-between mb-2">
-              <h2 class="font-semibold text-gray-900 text-lg">Recurring Tasks</h2>
+              <h2 class="font-semibold text-white text-lg">Recurring Tasks</h2>
             </div>
           </div>
 
@@ -534,11 +510,11 @@
             {#each recurringTasks as task}
               <div
                 onclick={() => handleTaskClick(task)}
-                class="backdrop-blur-sm bg-white/60 rounded-lg shadow-[inset_0_2px_4px_rgba(255,255,255,0.5)] border border-white/50 hover:shadow-[inset_0_2px_4px_rgba(255,255,255,0.7)] transition-all duration-200 cursor-pointer hover:scale-[1.02] hover:border-white/70"
+                class="backdrop-blur-sm bg-gray-700/60 rounded-lg shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)] border border-gray-600/50 hover:shadow-[inset_0_2px_4px_rgba(0,0,0,0.3)] transition-all duration-200 cursor-pointer hover:scale-[1.02] hover:border-gray-500/70 {recurringTasks.some(rt => rt.id === task.id) ? 'bg-yellow-900/30' : 'bg-gray-700/60'}"
               >
                 <div class="p-3">
                   <div class="flex items-start justify-between mb-1">
-                    <h3 class="font-medium text-gray-900 text-sm leading-tight flex-1 mr-2 flex items-center gap-2">
+                    <h3 class="font-medium text-white text-sm leading-tight flex-1 mr-2 flex items-center gap-2">
                       {#if task.started}
                         <span class="w-2 h-2 rounded-full bg-green-500"></span>
                       {/if}
@@ -549,22 +525,26 @@
                         {getStreakEmoji(task.streak)} {task.streak} days
                       </span>
                       <span class={`text-xs px-2 py-1 rounded-full font-medium whitespace-nowrap ${
-                        task.priority === "high"
-                          ? "bg-red-100/70 text-red-800 border border-red-200/50"
-                          : task.priority === "medium"
-                            ? "bg-yellow-100/70 text-yellow-800 border border-yellow-200/50"
-                            : "bg-green-100/70 text-green-800 border border-green-200/50"
+                        task.intensity >= 8
+                          ? "bg-red-900/70 text-red-200 border border-red-800/50"
+                          : task.intensity >= 5
+                            ? "bg-yellow-900/70 text-yellow-200 border border-yellow-800/50"
+                            : "bg-green-900/70 text-green-200 border border-green-800/50"
                       }`}>
-                        {task.priority}
+                        {task.intensity}
                       </span>
                     </div>
                   </div>
 
-                  <div class="flex items-center justify-between text-xs text-gray-500">
-                    <span class="bg-white/50 backdrop-blur-sm px-2 py-1 rounded-md font-mono">
-                      {task.context}
-                    </span>
-                    <span class="text-gray-500">
+                  <div class="flex items-center justify-between text-xs text-gray-400">
+                    <div class="flex flex-wrap gap-1">
+                      {#each task.tags as tag}
+                        <span class="bg-gray-600/50 backdrop-blur-sm px-2 py-1 rounded-md font-mono text-gray-200">
+                          {tag}
+                        </span>
+                      {/each}
+                    </div>
+                    <span class="text-gray-400">
                       {task.estimatedTime} min
                     </span>
                   </div>
@@ -576,27 +556,20 @@
       </div>
 
       <!-- Middle Column: Today's Schedule -->
-      <div class="bg-white rounded-lg shadow flex flex-col overflow-hidden">
-        <div class="p-4 border-b border-white/50 bg-gradient-to-r from-white/50 to-white/30 shrink-0">
+      <div class="bg-gradient-to-br from-gray-800 via-blue-900/30 to-gray-800 rounded-lg shadow-lg flex flex-col overflow-hidden border border-gray-700">
+        <div class="p-4 border-b border-gray-700 bg-gradient-to-r from-gray-800 via-blue-900/30 to-gray-700 shrink-0">
           <div class="flex items-center justify-between mb-2">
-            <h2 class="font-semibold text-gray-900 text-lg">Today's Schedule</h2>
-            <button
-              onclick={() => openTaskModal('today')}
-              class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-400 hover:text-gray-600 text-xl flex items-center justify-center transition-colors duration-200"
-              title="Add task"
-            >
-              +
-            </button>
+            <h2 class="font-semibold text-white text-lg">Today's Schedule</h2>
           </div>
         </div>
 
         <div class="flex-1 overflow-y-auto min-h-0">
-          <div class="grid grid-cols-[100px_1fr] h-[2880px] min-h-0">
+          <div class="grid grid-cols-[100px_1fr] h-[2880px] min-h-0 relative">
             <!-- Time slots -->
-            <div class="border-r border-gray-200 h-full overflow-y-auto min-h-0">
+            <div class="border-r border-gray-700 h-full overflow-y-auto min-h-0 sticky left-0 bg-gray-800 z-20">
               {#each timeSlots as timeSlot}
-                <div class="h-30 border-b border-gray-100 flex items-center justify-center">
-                  <span class="text-sm text-gray-500">{timeSlot}</span>
+                <div class="h-30 border-b border-gray-700 flex items-center justify-center">
+                  <span class="text-sm text-gray-400">{timeSlot}</span>
                 </div>
               {/each}
             </div>
@@ -606,6 +579,13 @@
               class="relative h-full overflow-y-auto min-h-0"
               bind:this={tasksContainer}
             >
+              <!-- Grid lines -->
+              <div class="absolute inset-0 grid grid-rows-[repeat(24,120px)] pointer-events-none">
+                {#each timeSlots as timeSlot}
+                  <div class="border-b border-gray-700"></div>
+                {/each}
+              </div>
+
               <!-- Now indicator line -->
               <div 
                 class="absolute left-0 right-0 h-0.5 bg-red-500 z-10"
@@ -616,15 +596,18 @@
                 </div>
               </div>
 
+              <!-- Drop zones -->
               {#each timeSlots as timeSlot}
                 <div 
-                  class="h-30 border-b border-gray-100"
+                  class="h-30 border-b border-gray-700 transition-colors duration-200"
                   ondragover={(e) => handleDragOver(e, 'today', timeSlot)}
+                  ondragleave={handleDragLeave}
                   ondrop={(e) => handleDrop(e, 'today', timeSlot)}
                   ondragend={handleDragEnd}
                 ></div>
               {/each}
 
+              <!-- Tasks -->
               {#each boardStore.getTasksBySection('today') as task}
                 {@const startHour = parseInt(task.startTime?.split(':')[0] || '0')}
                 {@const startMinute = parseInt(task.startTime?.split(':')[1] || '0')}
@@ -632,46 +615,56 @@
                 {@const endMinute = parseInt(task.endTime?.split(':')[1] || '0')}
                 {@const duration = (endHour - startHour) + (endMinute - startMinute) / 60}
                 {@const top = (startHour + startMinute / 60) * 120}
-                {@const height = duration * 120}
-                {@const isRecurring = recurringTasks.some(rt => rt.id === task.id)}
+                {@const height = Math.max(duration * 120, 60)}
                 {@const isCompact = height < 80}
 
                 <div
                   draggable="true"
                   ondragstart={(e) => handleDragStart(e, task)}
                   onclick={() => handleTaskClick(task)}
-                  class="backdrop-blur-sm bg-white/60 rounded-lg shadow-[inset_0_2px_4px_rgba(255,255,255,0.5)] border border-white/50 hover:shadow-[inset_0_2px_4px_rgba(255,255,255,0.7)] transition-all duration-200 cursor-pointer hover:scale-[1.02] hover:border-white/70"
+                  class="absolute left-2 right-2 backdrop-blur-sm rounded-lg shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)] border border-gray-600/50 hover:shadow-[inset_0_2px_4px_rgba(0,0,0,0.3)] transition-all duration-200 cursor-pointer hover:scale-[1.02] hover:border-gray-500/70 z-10 {recurringTasks.some(rt => rt.id === task.id.split('-')[0]) ? 'bg-yellow-900/30' : 'bg-gray-700/60'}"
                   style="top: {top}px; height: {height}px;"
                 >
-                  <div class="p-3 {isCompact ? 'py-1' : ''}">
+                  <div class="p-3 {isCompact ? 'py-1' : ''} h-full flex flex-col">
                     <div class="flex items-start justify-between {isCompact ? 'mb-0' : 'mb-1'}">
-                      <h3 class="font-medium text-gray-900 text-sm leading-tight flex-1 mr-2 truncate flex items-center gap-2">
+                      <h3 class="font-medium text-white text-sm leading-tight flex-1 mr-2 truncate flex items-center gap-2">
                         {#if task.started}
                           <span class="w-2 h-2 rounded-full bg-green-500"></span>
                         {/if}
                         {task.title}
-                        {#if isRecurring}
-                          <span class="inline-block ml-1 text-xs text-blue-600">🔄</span>
-                        {/if}
                       </h3>
                       {#if !isCompact}
                         <span class={`text-xs px-2 py-1 rounded-full font-medium whitespace-nowrap ${
-                          task.priority === "high"
-                            ? "bg-red-100/70 text-red-800 border border-red-200/50"
-                            : task.priority === "medium"
-                              ? "bg-yellow-100/70 text-yellow-800 border border-yellow-200/50"
-                              : "bg-green-100/70 text-green-800 border border-green-200/50"
+                          task.intensity >= 8
+                            ? "bg-red-900/70 text-red-200 border border-red-800/50"
+                            : task.intensity >= 5
+                              ? "bg-yellow-900/70 text-yellow-200 border border-yellow-800/50"
+                              : "bg-green-900/70 text-green-200 border border-green-800/50"
                         }`}>
-                          {task.priority}
+                          Intensity: {task.intensity}
                         </span>
                       {/if}
                     </div>
 
                     {#if !isCompact}
-                      <div class="flex items-center justify-between text-xs text-gray-500">
-                        <span class="bg-white/50 backdrop-blur-sm px-2 py-1 rounded-md font-mono">
-                          {task.context}
-                        </span>
+                      <div class="flex-1 flex flex-col justify-between">
+                        {#if task.outcome}
+                          <p class="text-xs text-gray-300 line-clamp-2">
+                            {task.outcome}
+                          </p>
+                        {/if}
+                        <div class="flex items-center justify-between text-xs text-gray-400 mt-auto">
+                          <div class="flex flex-wrap gap-1">
+                            {#each task.tags as tag}
+                              <span class="bg-gray-600/50 backdrop-blur-sm px-2 py-1 rounded-md font-mono text-gray-200">
+                                {tag}
+                              </span>
+                            {/each}
+                          </div>
+                          <span class="text-gray-400">
+                            {task.estimatedTime} min
+                          </span>
+                        </div>
                       </div>
                     {/if}
                   </div>
@@ -679,13 +672,13 @@
               {/each}
 
               {#if boardStore.getTasksBySection('today').length === 0}
-                <div class="absolute inset-0 flex items-center justify-center text-gray-400">
+                <div class="absolute inset-0 flex items-center justify-center text-gray-500">
                   <div class="text-center">
                     <div class="text-2xl mb-2">✨</div>
                     <p class="text-sm">No tasks for today</p>
                     <button
                       onclick={() => openTaskModal('today')}
-                      class="text-xs text-blue-600 hover:text-blue-800 mt-1"
+                      class="text-xs text-blue-400 hover:text-blue-300 mt-1"
                     >
                       Add your first task
                     </button>
@@ -700,17 +693,10 @@
       <!-- Right Column: Waiting + Someday + Reference -->
       <div class="flex flex-col gap-4 min-h-0">
         <!-- Waiting For -->
-        <div class="bg-white rounded-lg shadow flex flex-col h-[calc(33.333%-0.67rem)] overflow-hidden">
-          <div class="p-4 border-b border-white/50 bg-gradient-to-r from-white/50 to-white/30 shrink-0">
+        <div class="bg-gray-800 rounded-lg shadow-lg flex flex-col h-[calc(33.333%-0.67rem)] overflow-hidden border border-gray-700">
+          <div class="p-4 border-b border-gray-700 bg-gradient-to-r from-gray-800 to-gray-700 shrink-0">
             <div class="flex items-center justify-between mb-2">
-              <h2 class="font-semibold text-gray-900 text-lg">Waiting For</h2>
-              <button
-                onclick={() => openTaskModal('waiting')}
-                class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-400 hover:text-gray-600 text-xl flex items-center justify-center transition-colors duration-200"
-                title="Add task"
-              >
-                +
-              </button>
+              <h2 class="font-semibold text-white text-lg">Waiting For</h2>
             </div>
           </div>
 
@@ -718,33 +704,37 @@
             {#each boardStore.getTasksBySection('waiting') as task}
               <div
                 onclick={() => handleTaskClick(task)}
-                class="backdrop-blur-sm bg-white/60 rounded-lg shadow-[inset_0_2px_4px_rgba(255,255,255,0.5)] border border-white/50 hover:shadow-[inset_0_2px_4px_rgba(255,255,255,0.7)] transition-all duration-200 cursor-pointer hover:scale-[1.02] hover:border-white/70"
+                class="backdrop-blur-sm bg-gray-700/60 rounded-lg shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)] border border-gray-600/50 hover:shadow-[inset_0_2px_4px_rgba(0,0,0,0.3)] transition-all duration-200 cursor-pointer hover:scale-[1.02] hover:border-gray-500/70 {recurringTasks.some(rt => rt.id === task.id) ? 'bg-yellow-900/30' : 'bg-gray-700/60'}"
               >
                 <div class="p-3">
                   <div class="flex items-start justify-between mb-1">
-                    <h3 class="font-medium text-gray-900 text-sm leading-tight flex-1 mr-2 flex items-center gap-2">
+                    <h3 class="font-medium text-white text-sm leading-tight flex-1 mr-2 flex items-center gap-2">
                       {#if task.started}
                         <span class="w-2 h-2 rounded-full bg-green-500"></span>
                       {/if}
                       {task.title}
                     </h3>
                     <span class={`text-xs px-2 py-1 rounded-full font-medium whitespace-nowrap ${
-                      task.priority === "high"
-                        ? "bg-red-100/70 text-red-800 border border-red-200/50"
-                        : task.priority === "medium"
-                          ? "bg-yellow-100/70 text-yellow-800 border border-yellow-200/50"
-                          : "bg-green-100/70 text-green-800 border border-green-200/50"
+                      task.intensity >= 8
+                        ? "bg-red-900/70 text-red-200 border border-red-800/50"
+                        : task.intensity >= 5
+                          ? "bg-yellow-900/70 text-yellow-200 border border-yellow-800/50"
+                          : "bg-green-900/70 text-green-200 border border-green-800/50"
                     }`}>
-                      {task.priority}
+                      Intensity: {task.intensity}
                     </span>
                   </div>
 
-                  <div class="flex items-center justify-between text-xs text-gray-500">
-                    <span class="bg-white/50 backdrop-blur-sm px-2 py-1 rounded-md font-mono">
-                      {task.context}
-                    </span>
+                  <div class="flex items-center justify-between text-xs text-gray-400">
+                    <div class="flex flex-wrap gap-1">
+                      {#each task.tags as tag}
+                        <span class="bg-gray-600/50 backdrop-blur-sm px-2 py-1 rounded-md font-mono text-gray-200">
+                          {tag}
+                        </span>
+                      {/each}
+                    </div>
                     {#if task.waitingFor}
-                      <span class="text-gray-500">
+                      <span class="text-gray-400">
                         Waiting for: {task.waitingFor}
                       </span>
                     {/if}
@@ -756,17 +746,10 @@
         </div>
 
         <!-- Someday -->
-        <div class="bg-white rounded-lg shadow flex flex-col h-[calc(33.333%-0.67rem)] overflow-hidden">
-          <div class="p-4 border-b border-white/50 bg-gradient-to-r from-white/50 to-white/30 shrink-0">
+        <div class="bg-gray-800 rounded-lg shadow-lg flex flex-col h-[calc(33.333%-0.67rem)] overflow-hidden border border-gray-700">
+          <div class="p-4 border-b border-gray-700 bg-gradient-to-r from-gray-800 to-gray-700 shrink-0">
             <div class="flex items-center justify-between mb-2">
-              <h2 class="font-semibold text-gray-900 text-lg">Someday</h2>
-              <button
-                onclick={() => openTaskModal('someday')}
-                class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-400 hover:text-gray-600 text-xl flex items-center justify-center transition-colors duration-200"
-                title="Add task"
-              >
-                +
-              </button>
+              <h2 class="font-semibold text-white text-lg">Someday</h2>
             </div>
           </div>
 
@@ -774,31 +757,35 @@
             {#each boardStore.getTasksBySection('someday') as task}
               <div
                 onclick={() => handleTaskClick(task)}
-                class="backdrop-blur-sm bg-white/60 rounded-lg shadow-[inset_0_2px_4px_rgba(255,255,255,0.5)] border border-white/50 hover:shadow-[inset_0_2px_4px_rgba(255,255,255,0.7)] transition-all duration-200 cursor-pointer hover:scale-[1.02] hover:border-white/70"
+                class="backdrop-blur-sm bg-gray-700/60 rounded-lg shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)] border border-gray-600/50 hover:shadow-[inset_0_2px_4px_rgba(0,0,0,0.3)] transition-all duration-200 cursor-pointer hover:scale-[1.02] hover:border-gray-500/70 {recurringTasks.some(rt => rt.id === task.id) ? 'bg-yellow-900/30' : 'bg-gray-700/60'}"
               >
                 <div class="p-3">
                   <div class="flex items-start justify-between mb-1">
-                    <h3 class="font-medium text-gray-900 text-sm leading-tight flex-1 mr-2 flex items-center gap-2">
+                    <h3 class="font-medium text-white text-sm leading-tight flex-1 mr-2 flex items-center gap-2">
                       {#if task.started}
                         <span class="w-2 h-2 rounded-full bg-green-500"></span>
                       {/if}
                       {task.title}
                     </h3>
                     <span class={`text-xs px-2 py-1 rounded-full font-medium whitespace-nowrap ${
-                      task.priority === "high"
-                        ? "bg-red-100/70 text-red-800 border border-red-200/50"
-                        : task.priority === "medium"
-                          ? "bg-yellow-100/70 text-yellow-800 border border-yellow-200/50"
-                          : "bg-green-100/70 text-green-800 border border-green-200/50"
+                      task.intensity >= 8
+                        ? "bg-red-900/70 text-red-200 border border-red-800/50"
+                        : task.intensity >= 5
+                          ? "bg-yellow-900/70 text-yellow-200 border border-yellow-800/50"
+                          : "bg-green-900/70 text-green-200 border border-green-800/50"
                     }`}>
-                      {task.priority}
+                      Intensity: {task.intensity}
                     </span>
                   </div>
 
-                  <div class="flex items-center justify-between text-xs text-gray-500">
-                    <span class="bg-white/50 backdrop-blur-sm px-2 py-1 rounded-md font-mono">
-                      {task.context}
-                    </span>
+                  <div class="flex items-center justify-between text-xs text-gray-400">
+                    <div class="flex flex-wrap gap-1">
+                      {#each task.tags as tag}
+                        <span class="bg-gray-600/50 backdrop-blur-sm px-2 py-1 rounded-md font-mono text-gray-200">
+                          {tag}
+                        </span>
+                      {/each}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -807,17 +794,10 @@
         </div>
 
         <!-- Reference -->
-        <div class="bg-white rounded-lg shadow flex flex-col h-[calc(33.333%-0.67rem)] overflow-hidden">
-          <div class="p-4 border-b border-white/50 bg-gradient-to-r from-white/50 to-white/30 shrink-0">
+        <div class="bg-gray-800 rounded-lg shadow-lg flex flex-col h-[calc(33.333%-0.67rem)] overflow-hidden border border-gray-700">
+          <div class="p-4 border-b border-gray-700 bg-gradient-to-r from-gray-800 to-gray-700 shrink-0">
             <div class="flex items-center justify-between mb-2">
-              <h2 class="font-semibold text-gray-900 text-lg">Reference</h2>
-              <button
-                onclick={() => openTaskModal('reference')}
-                class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-400 hover:text-gray-600 text-xl flex items-center justify-center transition-colors duration-200"
-                title="Add task"
-              >
-                +
-              </button>
+              <h2 class="font-semibold text-white text-lg">Reference</h2>
             </div>
           </div>
 
@@ -825,31 +805,35 @@
             {#each boardStore.getTasksBySection('reference') as task}
               <div
                 onclick={() => handleTaskClick(task)}
-                class="backdrop-blur-sm bg-white/60 rounded-lg shadow-[inset_0_2px_4px_rgba(255,255,255,0.5)] border border-white/50 hover:shadow-[inset_0_2px_4px_rgba(255,255,255,0.7)] transition-all duration-200 cursor-pointer hover:scale-[1.02] hover:border-white/70"
+                class="backdrop-blur-sm bg-gray-700/60 rounded-lg shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)] border border-gray-600/50 hover:shadow-[inset_0_2px_4px_rgba(0,0,0,0.3)] transition-all duration-200 cursor-pointer hover:scale-[1.02] hover:border-gray-500/70 {recurringTasks.some(rt => rt.id === task.id) ? 'bg-yellow-900/30' : 'bg-gray-700/60'}"
               >
                 <div class="p-3">
                   <div class="flex items-start justify-between mb-1">
-                    <h3 class="font-medium text-gray-900 text-sm leading-tight flex-1 mr-2 flex items-center gap-2">
+                    <h3 class="font-medium text-white text-sm leading-tight flex-1 mr-2 flex items-center gap-2">
                       {#if task.started}
                         <span class="w-2 h-2 rounded-full bg-green-500"></span>
                       {/if}
                       {task.title}
                     </h3>
                     <span class={`text-xs px-2 py-1 rounded-full font-medium whitespace-nowrap ${
-                      task.priority === "high"
-                        ? "bg-red-100/70 text-red-800 border border-red-200/50"
-                        : task.priority === "medium"
-                          ? "bg-yellow-100/70 text-yellow-800 border border-yellow-200/50"
-                          : "bg-green-100/70 text-green-800 border border-green-200/50"
+                      task.intensity >= 8
+                        ? "bg-red-900/70 text-red-200 border border-red-800/50"
+                        : task.intensity >= 5
+                          ? "bg-yellow-900/70 text-yellow-200 border border-yellow-800/50"
+                          : "bg-green-900/70 text-green-200 border border-green-800/50"
                     }`}>
-                      {task.priority}
+                      Intensity: {task.intensity}
                     </span>
                   </div>
 
-                  <div class="flex items-center justify-between text-xs text-gray-500">
-                    <span class="bg-white/50 backdrop-blur-sm px-2 py-1 rounded-md font-mono">
-                      {task.context}
-                    </span>
+                  <div class="flex items-center justify-between text-xs text-gray-400">
+                    <div class="flex flex-wrap gap-1">
+                      {#each task.tags as tag}
+                        <span class="bg-gray-600/50 backdrop-blur-sm px-2 py-1 rounded-md font-mono text-gray-200">
+                          {tag}
+                        </span>
+                      {/each}
+                    </div>
                   </div>
                 </div>
               </div>

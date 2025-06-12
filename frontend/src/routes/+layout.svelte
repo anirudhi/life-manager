@@ -5,6 +5,6 @@
 	let { children } = $props();
 </script>
 
-<main class="w-full p-4">
+<main class="w-full">
 	{@render children()}
 </main>
