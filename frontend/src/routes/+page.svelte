@@ -87,10 +87,6 @@
 		}
 	}
 
-	function updateCurrentTime() {
-		currentTime = new Date();
-	}
-
 	function handleDragStart(event: DragEvent, task: Task) {
 		draggedTask = convertToTask(task);
 		if (event.dataTransfer) {
@@ -174,49 +170,6 @@
 			});
 		}
 
-		draggedTask = null;
-		draggedOverTime = null;
-	}
-
-	function handleDragOver(event: DragEvent, targetColumn: string, timeSlot?: string) {
-		event.preventDefault();
-		if (event.dataTransfer) {
-			event.dataTransfer.dropEffect = 'move';
-		}
-		if (timeSlot) {
-			draggedOverTime = timeSlot;
-		}
-	}
-
-	function handleDrop(event: DragEvent, targetColumn: string, timeSlot?: string) {
-		event.preventDefault();
-		if (draggedTask) {
-			if (targetColumn === 'today' && timeSlot) {
-				const [hours, minutes] = timeSlot.split(':').map(Number);
-				const duration = 1; // Default 1 hour duration for tasks moved to today
-
-				const newStartTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-				const newEndTime = new Date(
-					new Date(`2000-01-01T${newStartTime}`).getTime() + duration * 60 * 60 * 1000
-				)
-					.toTimeString()
-					.slice(0, 5);
-
-				boardStore.updateTask(draggedTask.id, {
-					...draggedTask,
-					section: 'today',
-					startTime: newStartTime,
-					endTime: newEndTime
-				});
-			} else {
-				// Moving to "Can do now" - remove time information
-				const { startTime, endTime, ...taskWithoutTime } = draggedTask;
-				boardStore.updateTask(draggedTask.id, {
-					...taskWithoutTime,
-					section: 'can-do-now'
-				});
-			}
-		}
 		draggedTask = null;
 		draggedOverTime = null;
 	}
