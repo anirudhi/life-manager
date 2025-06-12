@@ -190,25 +190,6 @@ class PocketBaseService {
 
     return taskData;
   }
-
-  async createDemoTask() {
-    const demoTask = {
-      title: 'Demo Task',
-      outcome: 'This is a demo task created on startup.',
-      section: 'can-do-now',
-      intensity: 1,
-      tags: 'demo,test',
-      dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // Due tomorrow
-      estimatedTime: 30, // 30 minutes
-      status: 'pending',
-      originalTranscription: 'Demo transcription',
-      processedAt: new Date().toISOString(),
-      llmModel: 'demo',
-      processingConfidence: 1
-    };
-
-    return this.saveTask(demoTask);
-  }
 }
 
 export const pocketbaseService = new PocketBaseService(); 

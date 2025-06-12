@@ -59,16 +59,4 @@ app.listen(PORT, async () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`🔗 API: http://localhost:${PORT}/api`);
-
-  // Create demo task on startup
-  try {
-    const result = await pocketbaseService.createDemoTask();
-    if (result.success) {
-      console.log('✅ Demo task created successfully');
-    } else {
-      console.error('❌ Failed to create demo task:', result.error);
-    }
-  } catch (error) {
-    console.error('❌ Error creating demo task:', error);
-  }
 }); 
