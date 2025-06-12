@@ -1,0 +1,219 @@
+{
+  "columns": [
+    {
+      "id": "inbox",
+      "title": "📥 Inbox",
+      "description": "Capture everything that needs attention",
+      "color": "bg-gray-100"
+    },
+    {
+      "id": "next-actions",
+      "title": "🎯 Next Actions",
+      "description": "Tasks ready to be done",
+      "color": "bg-blue-100"
+    },
+    {
+      "id": "waiting-for",
+      "title": "⏳ Waiting For",
+      "description": "Delegated tasks or dependencies",
+      "color": "bg-yellow-100"
+    },
+    {
+      "id": "projects",
+      "title": "📋 Projects",
+      "description": "Multi-step outcomes",
+      "color": "bg-green-100"
+    },
+    {
+      "id": "someday-maybe",
+      "title": "💭 Someday/Maybe",
+      "description": "Ideas for the future",
+      "color": "bg-purple-100"
+    },
+    {
+      "id": "reference",
+      "title": "📚 Reference",
+      "description": "Information to keep",
+      "color": "bg-orange-100"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-1",
+      "title": "Review quarterly goals",
+      "description": "Analyze Q3 performance and set Q4 objectives",
+      "columnId": "inbox",
+      "priority": "high",
+      "tags": ["business", "planning"],
+      "dueDate": "2024-01-15",
+      "createdAt": "2024-01-01T10:00:00Z",
+      "updatedAt": "2024-01-01T10:00:00Z",
+      "estimatedTime": 120,
+      "context": "@computer",
+      "energy": "high"
+    },
+    {
+      "id": "task-2",
+      "title": "Call dentist for appointment",
+      "description": "Schedule routine cleaning",
+      "columnId": "next-actions",
+      "priority": "medium",
+      "tags": ["health", "personal"],
+      "dueDate": "2024-01-10",
+      "createdAt": "2024-01-01T11:00:00Z",
+      "updatedAt": "2024-01-01T11:00:00Z",
+      "estimatedTime": 15,
+      "context": "@phone",
+      "energy": "low"
+    },
+    {
+      "id": "task-3",
+      "title": "Waiting for design feedback from client",
+      "description": "Sent mockups on Monday, expecting response by Friday",
+      "columnId": "waiting-for",
+      "priority": "high",
+      "tags": ["work", "design"],
+      "dueDate": "2024-01-12",
+      "createdAt": "2024-01-08T09:00:00Z",
+      "updatedAt": "2024-01-08T09:00:00Z",
+      "estimatedTime": 0,
+      "context": "@waiting",
+      "energy": "none",
+      "waitingFor": "client"
+    },
+    {
+      "id": "task-4",
+      "title": "Mobile App Development",
+      "description": "Build React Native app for task management",
+      "columnId": "projects",
+      "priority": "high",
+      "tags": ["development", "mobile"],
+      "dueDate": "2024-03-01",
+      "createdAt": "2024-01-01T08:00:00Z",
+      "updatedAt": "2024-01-01T08:00:00Z",
+      "estimatedTime": 2400,
+      "context": "@computer",
+      "energy": "high",
+      "subtasks": [
+        "Set up development environment",
+        "Create app wireframes",
+        "Implement core features",
+        "Testing and deployment"
+      ]
+    },
+    {
+      "id": "task-5",
+      "title": "Learn Spanish",
+      "description": "Complete beginner Spanish course",
+      "columnId": "someday-maybe",
+      "priority": "low",
+      "tags": ["learning", "personal"],
+      "dueDate": null,
+      "createdAt": "2024-01-01T12:00:00Z",
+      "updatedAt": "2024-01-01T12:00:00Z",
+      "estimatedTime": 6000,
+      "context": "@anywhere",
+      "energy": "medium"
+    },
+    {
+      "id": "task-6",
+      "title": "Important client contact info",
+      "description": "Key stakeholder details for ABC Corp project",
+      "columnId": "reference",
+      "priority": "none",
+      "tags": ["reference", "contacts"],
+      "dueDate": null,
+      "createdAt": "2024-01-01T14:00:00Z",
+      "updatedAt": "2024-01-01T14:00:00Z",
+      "estimatedTime": 0,
+      "context": "@reference",
+      "energy": "none"
+    },
+    {
+      "id": "task-7",
+      "title": "Prepare presentation slides",
+      "description": "Create slides for monthly team meeting",
+      "columnId": "next-actions",
+      "priority": "high",
+      "tags": ["work", "presentation"],
+      "dueDate": "2024-01-16",
+      "createdAt": "2024-01-02T09:00:00Z",
+      "updatedAt": "2024-01-02T09:00:00Z",
+      "estimatedTime": 90,
+      "context": "@computer",
+      "energy": "high"
+    },
+    {
+      "id": "task-8",
+      "title": "Buy groceries",
+      "description": "Weekly grocery shopping - check list in notes app",
+      "columnId": "next-actions",
+      "priority": "medium",
+      "tags": ["errands", "personal"],
+      "dueDate": "2024-01-11",
+      "createdAt": "2024-01-03T16:00:00Z",
+      "updatedAt": "2024-01-03T16:00:00Z",
+      "estimatedTime": 45,
+      "context": "@errands",
+      "energy": "medium"
+    },
+    {
+      "id": "task-9",
+      "title": "Website Redesign Project",
+      "description": "Complete overhaul of company website",
+      "columnId": "projects",
+      "priority": "high",
+      "tags": ["web", "design", "work"],
+      "dueDate": "2024-02-15",
+      "createdAt": "2024-01-01T10:30:00Z",
+      "updatedAt": "2024-01-01T10:30:00Z",
+      "estimatedTime": 1800,
+      "context": "@computer",
+      "energy": "high",
+      "subtasks": [
+        "Conduct user research",
+        "Create new design system",
+        "Develop responsive layouts",
+        "Implement CMS integration",
+        "User testing and feedback"
+      ]
+    },
+    {
+      "id": "task-10",
+      "title": "Tax documents from accountant",
+      "description": "Waiting for final tax preparation documents",
+      "columnId": "waiting-for",
+      "priority": "high",
+      "tags": ["finance", "taxes"],
+      "dueDate": "2024-01-31",
+      "createdAt": "2024-01-05T11:00:00Z",
+      "updatedAt": "2024-01-05T11:00:00Z",
+      "estimatedTime": 0,
+      "context": "@waiting",
+      "energy": "none",
+      "waitingFor": "accountant"
+    }
+  ],
+  "contexts": [
+    "@computer",
+    "@phone",
+    "@errands",
+    "@home",
+    "@office",
+    "@anywhere",
+    "@waiting",
+    "@reference"
+  ],
+  "priorities": [
+    { "value": "high", "label": "High", "color": "bg-red-100 text-red-800" },
+    { "value": "medium", "label": "Medium", "color": "bg-yellow-100 text-yellow-800" },
+    { "value": "low", "label": "Low", "color": "bg-green-100 text-green-800" },
+    { "value": "none", "label": "None", "color": "bg-gray-100 text-gray-600" }
+  ],
+  "energyLevels": [
+    { "value": "high", "label": "High Energy", "color": "bg-red-50" },
+    { "value": "medium", "label": "Medium Energy", "color": "bg-yellow-50" },
+    { "value": "low", "label": "Low Energy", "color": "bg-green-50" },
+    { "value": "none", "label": "No Energy Required", "color": "bg-gray-50" }
+  ]
+} 
