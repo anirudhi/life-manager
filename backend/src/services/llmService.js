@@ -1,17 +1,13 @@
 import OpenAI from 'openai';
-import { StructuredTaskSchema } from '../schemas/taskSchema.js';
+import { SimpleTaskSchema } from '../schemas/taskSchema.js';
 
 class LLMService {
   constructor() {
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error('OPENAI_API_KEY environment variable is required');
-    }
-
     this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
+      apiKey: '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',
     });
 
-    this.model = 'gpt-4-turbo-preview';
+    this.model = 'gpt-4o-mini';
   }
 
   async processTranscription(transcription, metadata = {}) {
@@ -35,6 +31,18 @@ class LLMService {
       const responseContent = completion.choices[0].message.content;
       const parsedResponse = JSON.parse(responseContent);
 
+      const processingTime = Date.now() - startTime;
+
+      // Check if the transcription contains a valid task
+      if (!parsedResponse.isTask) {
+        return {
+          success: true,
+          isTask: false,
+          message: "The transcription doesn't appear to contain a task.",
+          processingTime
+        };
+      }
+
       // Add processing metadata
       const enrichedTask = {
         ...parsedResponse,
@@ -45,13 +53,13 @@ class LLMService {
       };
 
       // Validate the response against our schema
-      const validatedTask = StructuredTaskSchema.parse(enrichedTask);
-
-      const processingTime = Date.now() - startTime;
+      const validatedTask = SimpleTaskSchema.parse(enrichedTask);
 
       return {
         success: true,
+        isTask: true,
         task: validatedTask,
+        message: "Task created successfully!",
         processingTime
       };
 
@@ -62,7 +70,9 @@ class LLMService {
 
       return {
         success: false,
+        isTask: false,
         error: error.message || 'Failed to process transcription',
+        message: "Failed to process the transcription.",
         processingTime
       };
     }
@@ -71,45 +81,42 @@ class LLMService {
   buildSystemPrompt() {
     return `You are an expert task management assistant that converts natural language transcriptions into structured task data.
 
-Your job is to analyze a transcription that represents a task someone needs to do and extract structured information about it.
+Your job is to analyze a transcription and determine if it represents a task someone needs to do. If it does, extract structured information about it. If it doesn't contain a task, indicate that clearly.
 
 IMPORTANT: You must respond with valid JSON only. Do not include any markdown formatting or code blocks.
 
 The JSON response should have this exact structure:
 {
-  "title": "string (1-200 chars) - Clear, actionable task title",
-  "description": "string (optional, max 1000 chars) - Detailed description if needed",
-  "category": "enum: work|personal|health|learning|creative|social|maintenance|other",
-  "priority": "enum: low|medium|high|urgent - Based on urgency and importance",
-  "estimatedDuration": {
-    "value": "number (positive) - Duration amount",
-    "unit": "enum: minutes|hours|days|weeks - Appropriate time unit",
-    "confidence": "number (0-1) - How confident you are in this estimate"
-  },
-  "optimalOutcome": {
-    "description": "string (1-500 chars) - What success looks like",
-    "successCriteria": ["array of strings (max 200 chars each) - Measurable success indicators"],
-    "impact": "enum: low|medium|high - Expected impact of completing this task",
-    "confidence": "number (0-1) - Confidence in outcome prediction"
-  },
-  "suggestedDeadline": "ISO datetime string (optional) - When this should ideally be completed",
-  "prerequisites": ["array of strings (optional, max 200 chars each) - What needs to be done first"],
-  "tags": ["array of strings (optional, max 50 chars each) - Relevant tags"],
-  "processingConfidence": "number (0-1) - Overall confidence in the task extraction"
+  "isTask": boolean, // true if the transcription contains a task, false otherwise
+  "title": "string (1-200 chars) - Clear, actionable task title (only if isTask is true)",
+  "outcome": "string (1-500 chars) - What success looks like (only if isTask is true)",
+  "section": "string - MUST be one of: 'can-do-now', 'today', 'waiting-for', 'recurring', 'someday', 'reference' (only if isTask is true)",
+  "intensity": number (1-10) - How challenging/demanding this task is (only if isTask is true),
+  "tags": "string (max 200 chars) - Comma-separated relevant tags (only if isTask is true)",
+  "dueDate": "ISO datetime string - When this should be completed (only if isTask is true)",
+  "estimatedTime": number - Estimated time in minutes (only if isTask is true)
 }
 
 Guidelines:
-- Be realistic with duration estimates
-- Consider the complexity and scope when estimating
-- Make success criteria specific and measurable
-- Choose appropriate categories and priorities
-- If the transcription is unclear, use lower confidence scores
-- Extract the core intent even from casual language
-- Consider context clues for urgency and importance`;
+- First determine if the transcription contains an actionable task
+- If it's just a statement, question, or casual conversation, set isTask to false
+- If it contains a task, extract all the required fields
+- Be realistic with time estimates (in minutes)
+- For section, use these exact values:
+  * 'can-do-now': Tasks that can be done immediately
+  * 'today': Tasks scheduled for today
+  * 'waiting-for': Tasks waiting on someone else
+  * 'recurring': Tasks that repeat regularly
+  * 'someday': Future tasks or ideas
+  * 'reference': Information to keep for reference
+- Intensity should reflect complexity and effort required (1=very easy, 10=extremely challenging)
+- For due dates, if not specified, suggest a reasonable timeframe based on the task
+- Tags should be relevant keywords separated by commas
+- Make outcomes specific and measurable when possible`;
   }
 
   buildUserPrompt(transcription, metadata) {
-    let prompt = `Please process this transcription into a structured task:\n\n"${transcription}"`;
+    let prompt = `Please analyze this transcription and determine if it contains a task:\n\n"${transcription}"`;
 
     if (metadata.timestamp) {
       prompt += `\n\nTimestamp: ${metadata.timestamp}`;
@@ -135,11 +142,13 @@ Guidelines:
       confidence -= 0.2;
     }
 
-    // Adjust based on response completeness
-    const requiredFields = ['title', 'category', 'priority', 'estimatedDuration', 'optimalOutcome'];
-    const presentFields = requiredFields.filter(field => parsedResponse[field]);
-    const completeness = presentFields.length / requiredFields.length;
-    confidence = confidence * completeness;
+    // Adjust based on response completeness if it's a task
+    if (parsedResponse.isTask) {
+      const requiredFields = ['title', 'outcome', 'section', 'intensity', 'tags', 'dueDate', 'estimatedTime'];
+      const presentFields = requiredFields.filter(field => parsedResponse[field]);
+      const completeness = presentFields.length / requiredFields.length;
+      confidence = confidence * completeness;
+    }
 
     // Ensure confidence is within bounds
     return Math.max(0, Math.min(1, confidence));

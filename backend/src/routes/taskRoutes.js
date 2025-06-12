@@ -26,19 +26,32 @@ router.post('/process', async (req, res, next) => {
     if (!llmResult.success) {
       return res.status(400).json({
         success: false,
+        isTask: false,
+        message: llmResult.message || 'Failed to process transcription',
         error: llmResult.error,
         processingTime: llmResult.processingTime
       });
     }
 
-    // Save to PocketBase
+    // If it's not a task, return without saving
+    if (!llmResult.isTask) {
+      return res.status(200).json({
+        success: true,
+        isTask: false,
+        message: llmResult.message,
+        processingTime: llmResult.processingTime
+      });
+    }
+
+    // Save to PocketBase only if it's a valid task
     const saveResult = await pocketbaseService.saveTask(llmResult.task);
 
     if (!saveResult.success) {
       console.warn('⚠️ Task processed but failed to save to database:', saveResult.error);
-      // Still return the processed task even if saving failed
       return res.status(201).json({
         success: true,
+        isTask: true,
+        message: 'Task created but failed to save to database',
         task: llmResult.task,
         processingTime: llmResult.processingTime,
         saved: false,
@@ -49,6 +62,8 @@ router.post('/process', async (req, res, next) => {
     console.log('✅ Task processed and saved successfully');
     res.status(201).json({
       success: true,
+      isTask: true,
+      message: 'Task created successfully!',
       task: llmResult.task,
       processingTime: llmResult.processingTime,
       saved: true,
@@ -65,8 +80,8 @@ router.get('/', async (req, res, next) => {
   try {
     const {
       status,
-      category,
-      priority,
+      section,
+      intensity,
       userId,
       page = 1,
       perPage = 20
@@ -74,8 +89,8 @@ router.get('/', async (req, res, next) => {
 
     const filters = {};
     if (status) filters.status = status;
-    if (category) filters.category = category;
-    if (priority) filters.priority = priority;
+    if (section) filters.section = section;
+    if (intensity) filters.intensity = intensity;
     if (userId) filters.userId = userId;
 
     const result = await pocketbaseService.getTasks(
@@ -180,10 +195,11 @@ router.post('/batch-process', async (req, res, next) => {
           validatedInput.metadata
         );
 
-        if (llmResult.success) {
+        if (llmResult.success && llmResult.isTask) {
           const saveResult = await pocketbaseService.saveTask(llmResult.task);
           results.push({
             success: true,
+            isTask: true,
             task: llmResult.task,
             saved: saveResult.success,
             taskId: saveResult.id,
@@ -191,7 +207,9 @@ router.post('/batch-process', async (req, res, next) => {
           });
         } else {
           results.push({
-            success: false,
+            success: llmResult.success,
+            isTask: llmResult.isTask,
+            message: llmResult.message,
             error: llmResult.error,
             originalTranscription: validatedInput.transcription
           });
@@ -199,6 +217,7 @@ router.post('/batch-process', async (req, res, next) => {
       } catch (error) {
         results.push({
           success: false,
+          isTask: false,
           error: error.message,
           originalTranscription: transcriptionData?.transcription || 'Invalid input'
         });
@@ -206,7 +225,7 @@ router.post('/batch-process', async (req, res, next) => {
     }
 
     const totalProcessingTime = Date.now() - startTime;
-    const successCount = results.filter(r => r.success).length;
+    const successCount = results.filter(r => r.success && r.isTask).length;
 
     res.json({
       success: true,

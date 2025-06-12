@@ -10,17 +10,50 @@ export const TranscriptionInputSchema = z.object({
   }).optional()
 });
 
-// Duration schema
+// New simplified task schema based on user requirements
+export const SimpleTaskSchema = z.object({
+  title: z.string().min(1, 'Task title is required').max(200),
+  outcome: z.string().min(1, 'Outcome is required').max(500),
+  section: z.string().min(1, 'Section is required').max(100),
+  intensity: z.number().int().min(1).max(10, 'Intensity must be between 1-10'),
+  tags: z.string().max(200),
+  dueDate: z.string().datetime(),
+  estimatedTime: z.number().positive('Estimated time must be positive'),
+  isTask: z.boolean().default(true) // To determine if transcription contained a valid task
+});
+
+// Database task schema (what gets saved to PocketBase)
+export const DatabaseTaskSchema = SimpleTaskSchema.extend({
+  id: z.string().optional(),
+  created: z.string().datetime().optional(),
+  updated: z.string().datetime().optional(),
+  status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']).default('pending'),
+  userId: z.string().optional(),
+  originalTranscription: z.string(),
+  processedAt: z.string().datetime(),
+  llmModel: z.string(),
+  processingConfidence: z.number().min(0).max(1)
+});
+
+// API response schema
+export const TaskProcessingResponseSchema = z.object({
+  success: z.boolean(),
+  task: SimpleTaskSchema.optional(),
+  isTask: z.boolean(),
+  message: z.string(),
+  error: z.string().optional(),
+  processingTime: z.number().optional()
+});
+
+// Legacy schemas for backward compatibility
 export const DurationSchema = z.object({
   value: z.number().positive('Duration must be positive'),
   unit: z.enum(['minutes', 'hours', 'days', 'weeks']),
   confidence: z.number().min(0).max(1, 'Confidence must be between 0 and 1')
 });
 
-// Priority levels
 export const PrioritySchema = z.enum(['low', 'medium', 'high', 'urgent']);
 
-// Task category
 export const CategorySchema = z.enum([
   'work',
   'personal',
@@ -32,7 +65,6 @@ export const CategorySchema = z.enum([
   'other'
 ]);
 
-// Structured task output schema
 export const StructuredTaskSchema = z.object({
   title: z.string().min(1, 'Task title is required').max(200),
   description: z.string().max(1000).optional(),
@@ -52,21 +84,4 @@ export const StructuredTaskSchema = z.object({
   processedAt: z.string().datetime(),
   llmModel: z.string(),
   processingConfidence: z.number().min(0).max(1)
-});
-
-// Database task schema (what gets saved to PocketBase)
-export const DatabaseTaskSchema = StructuredTaskSchema.extend({
-  id: z.string().optional(),
-  created: z.string().datetime().optional(),
-  updated: z.string().datetime().optional(),
-  status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']).default('pending'),
-  userId: z.string().optional()
-});
-
-// API response schema
-export const TaskProcessingResponseSchema = z.object({
-  success: z.boolean(),
-  task: StructuredTaskSchema.optional(),
-  error: z.string().optional(),
-  processingTime: z.number().optional()
 }); 

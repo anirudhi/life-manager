@@ -1,0 +1,26 @@
+# fly.toml app configuration file generated for life-manager-database1-wispy-thunder-4413 on 2025-06-12T22:36:50+05:30
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'life-manager-database1-wispy-thunder-4413'
+primary_region = 'sin'
+
+[build]
+
+[[mounts]]
+  source = 'pb_data'
+  destination = '/pb/pb_data'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1

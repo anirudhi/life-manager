@@ -3,7 +3,7 @@ import { DatabaseTaskSchema } from '../schemas/taskSchema.js';
 
 class PocketBaseService {
   constructor() {
-    this.pb = new PocketBase(process.env.POCKETBASE_URL || 'http://127.0.0.1:8090');
+    this.pb = new PocketBase('https://life-manager-database1-wispy-thunder-4413.fly.dev');
     this.collectionName = 'tasks';
     this.initialized = false;
   }
@@ -21,130 +21,12 @@ class PocketBaseService {
         console.log('✅ PocketBase admin authenticated');
       }
 
-      // Ensure the tasks collection exists
-      await this.ensureTasksCollection();
       this.initialized = true;
       console.log('✅ PocketBase service initialized');
     } catch (error) {
       console.error('❌ PocketBase initialization failed:', error.message);
       throw error;
     }
-  }
-
-  async ensureTasksCollection() {
-    try {
-      // Try to get the collection
-      await this.pb.collections.getOne(this.collectionName);
-      console.log(`✅ Collection '${this.collectionName}' exists`);
-    } catch (error) {
-      if (error.status === 404) {
-        // Collection doesn't exist, create it
-        console.log(`📝 Creating collection '${this.collectionName}'...`);
-        await this.createTasksCollection();
-      } else {
-        throw error;
-      }
-    }
-  }
-
-  async createTasksCollection() {
-    const collectionSchema = {
-      name: this.collectionName,
-      type: 'base',
-      schema: [
-        {
-          name: 'title',
-          type: 'text',
-          required: true,
-          options: { max: 200 }
-        },
-        {
-          name: 'description',
-          type: 'text',
-          required: false,
-          options: { max: 1000 }
-        },
-        {
-          name: 'category',
-          type: 'select',
-          required: true,
-          options: {
-            values: ['work', 'personal', 'health', 'learning', 'creative', 'social', 'maintenance', 'other']
-          }
-        },
-        {
-          name: 'priority',
-          type: 'select',
-          required: true,
-          options: {
-            values: ['low', 'medium', 'high', 'urgent']
-          }
-        },
-        {
-          name: 'status',
-          type: 'select',
-          required: true,
-          options: {
-            values: ['pending', 'in_progress', 'completed', 'cancelled']
-          }
-        },
-        {
-          name: 'estimatedDuration',
-          type: 'json',
-          required: true
-        },
-        {
-          name: 'optimalOutcome',
-          type: 'json',
-          required: true
-        },
-        {
-          name: 'suggestedDeadline',
-          type: 'date',
-          required: false
-        },
-        {
-          name: 'prerequisites',
-          type: 'json',
-          required: false
-        },
-        {
-          name: 'tags',
-          type: 'json',
-          required: false
-        },
-        {
-          name: 'originalTranscription',
-          type: 'text',
-          required: true,
-          options: { max: 5000 }
-        },
-        {
-          name: 'processedAt',
-          type: 'date',
-          required: true
-        },
-        {
-          name: 'llmModel',
-          type: 'text',
-          required: true
-        },
-        {
-          name: 'processingConfidence',
-          type: 'number',
-          required: true
-        },
-        {
-          name: 'userId',
-          type: 'text',
-          required: false
-        }
-      ]
-    };
-
-    const collection = await this.pb.collections.create(collectionSchema);
-    console.log(`✅ Collection '${this.collectionName}' created successfully`);
-    return collection;
   }
 
   async saveTask(taskData) {
@@ -206,13 +88,13 @@ class PocketBaseService {
       if (filters.status) {
         filterString += `status = "${filters.status}"`;
       }
-      if (filters.category) {
+      if (filters.section) {
         if (filterString) filterString += ' && ';
-        filterString += `category = "${filters.category}"`;
+        filterString += `section = "${filters.section}"`;
       }
-      if (filters.priority) {
+      if (filters.intensity) {
         if (filterString) filterString += ' && ';
-        filterString += `priority = "${filters.priority}"`;
+        filterString += `intensity = ${filters.intensity}`;
       }
       if (filters.userId) {
         if (filterString) filterString += ' && ';
@@ -278,8 +160,8 @@ class PocketBaseService {
       pbData.processedAt = new Date(pbData.processedAt);
     }
 
-    if (pbData.suggestedDeadline) {
-      pbData.suggestedDeadline = new Date(pbData.suggestedDeadline);
+    if (pbData.dueDate) {
+      pbData.dueDate = new Date(pbData.dueDate);
     }
 
     return pbData;
@@ -294,8 +176,8 @@ class PocketBaseService {
       taskData.processedAt = new Date(taskData.processedAt).toISOString();
     }
 
-    if (taskData.suggestedDeadline) {
-      taskData.suggestedDeadline = new Date(taskData.suggestedDeadline).toISOString();
+    if (taskData.dueDate) {
+      taskData.dueDate = new Date(taskData.dueDate).toISOString();
     }
 
     if (taskData.created) {
