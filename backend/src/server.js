@@ -6,6 +6,7 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import { taskRoutes } from './routes/taskRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { pocketbaseService } from './services/pocketbaseService.js';
 
 // Load environment variables
 dotenv.config();
@@ -54,8 +55,20 @@ app.use('*', (req, res) => {
 app.use(errorHandler);
 
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`🔗 API: http://localhost:${PORT}/api`);
+
+  // Create demo task on startup
+  try {
+    const result = await pocketbaseService.createDemoTask();
+    if (result.success) {
+      console.log('✅ Demo task created successfully');
+    } else {
+      console.error('❌ Failed to create demo task:', result.error);
+    }
+  } catch (error) {
+    console.error('❌ Error creating demo task:', error);
+  }
 }); 
