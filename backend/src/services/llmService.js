@@ -1,10 +1,13 @@
 import OpenAI from 'openai';
 import { SimpleTaskSchema } from '../schemas/taskSchema.js';
+import dotenv from 'dotenv';
+import { DatabaseTaskSchema } from '../schemas/taskSchema.js';
+dotenv.config();
 
 class LLMService {
   constructor() {
     this.openai = new OpenAI({
-      apiKey: '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',
+      apiKey: process.env.OPENAI_API_KEY,
     });
 
     this.model = 'gpt-4o-mini';
@@ -31,6 +34,8 @@ class LLMService {
       const responseContent = completion.choices[0].message.content;
       const parsedResponse = JSON.parse(responseContent);
 
+      console.log('LLM parsed response:', parsedResponse);
+
       const processingTime = Date.now() - startTime;
 
       // Check if the transcription contains a valid task
@@ -43,6 +48,12 @@ class LLMService {
         };
       }
 
+      // Validate the LLM output (optional, for error reporting)
+      const llmValidation = SimpleTaskSchema.safeParse(parsedResponse);
+      if (!llmValidation.success) {
+        throw new Error('LLM output did not match SimpleTaskSchema: ' + JSON.stringify(llmValidation.error.issues));
+      }
+
       // Add processing metadata
       const enrichedTask = {
         ...parsedResponse,
@@ -52,13 +63,16 @@ class LLMService {
         processingConfidence: this.calculateConfidence(completion, parsedResponse)
       };
 
-      // Validate the response against our schema
-      const validatedTask = SimpleTaskSchema.parse(enrichedTask);
+      // Validate against DatabaseTaskSchema to ensure all required fields are present
+      const dbTask = DatabaseTaskSchema.parse({
+        ...enrichedTask,
+        status: 'pending',
+      });
 
       return {
         success: true,
         isTask: true,
-        task: validatedTask,
+        task: dbTask,
         message: "Task created successfully!",
         processingTime
       };
@@ -91,7 +105,7 @@ The JSON response should have this exact structure:
   "title": "string (1-200 chars) - Clear, actionable task title (only if isTask is true)",
   "outcome": "string (1-500 chars) - What success looks like (only if isTask is true)",
   "section": "string - MUST be one of: 'can-do-now', 'today', 'waiting-for', 'recurring', 'someday', 'reference' (only if isTask is true)",
-  "intensity": number (1-10) - How challenging/demanding this task is (only if isTask is true),
+  "intensity": number (1-10) - How challenging/demanding this task is (only if isTask is true)",
   "tags": "string (max 200 chars) - Comma-separated relevant tags (only if isTask is true)",
   "dueDate": "ISO datetime string - When this should be completed (only if isTask is true)",
   "estimatedTime": number - Estimated time in minutes (only if isTask is true)

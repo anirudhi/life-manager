@@ -200,7 +200,11 @@ class PocketBaseService {
       tags: 'demo,test',
       dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // Due tomorrow
       estimatedTime: 30, // 30 minutes
-      status: 'pending'
+      status: 'pending',
+      originalTranscription: 'Demo transcription',
+      processedAt: new Date().toISOString(),
+      llmModel: 'demo',
+      processingConfidence: 1
     };
 
     return this.saveTask(demoTask);
