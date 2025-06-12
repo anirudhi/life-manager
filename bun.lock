@@ -1,0 +1,13 @@
+{
+  "lockfileVersion": 1,
+  "workspaces": {
+    "": {
+      "dependencies": {
+        "pocketbase": "^0.26.1",
+      },
+    },
+  },
+  "packages": {
+    "pocketbase": ["pocketbase@0.26.1", "", {}, "sha512-fjcPDpxyqTZCwqGUTPUV7vssIsNMqHxk9GxbhxYHPEf18RqX2d9cpSqbbHk7aas30jqkgptuKfG7aY/Mytjj3g=="],
+  }
+}
